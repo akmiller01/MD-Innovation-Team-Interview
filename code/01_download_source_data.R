@@ -161,7 +161,7 @@ if(!file.exists("input/ar9050.csv")){
   non_waiting_week_states = c(
     "CT", "DE", "GA", "IA", "KY","MD", "MI", "MO", "NV", "NJ", "TN", "TX", "WY"
   )
-  ar9050_wide$non_waiting_week = ar9050$state %in% non_waiting_week_states
+  ar9050_wide$non_waiting_week = ar9050_wide$state %in% non_waiting_week_states
   ar9050_wide$first_payment_promptness = ar9050_wide$`21days_or_fewer` / ar9050_wide$total
   ar9050_wide$first_payment_promptness[which(ar9050_wide$state %in% non_waiting_week_states)] = 
     ar9050_wide$`14days_or_fewer`[which(ar9050_wide$state %in% non_waiting_week_states)] / 
@@ -418,6 +418,109 @@ if(!file.exists("input/quality.csv")){
   fwrite(
     all_quality_dat,
     "input/quality.csv"
+  )
+}
+
+# Quality annual
+if(!file.exists("input/quality_annual_fy.csv")){
+  headers = add_headers(
+    'Accept' = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language' = 'en-US,en;q=0.9',
+    'Cache-Control' = 'no-cache',
+    'Connection' = 'keep-alive',
+    'Content-Type' = 'application/x-www-form-urlencoded',
+    'Cookie' = 'cookieOUI=cookieOUIValue; mycookie=cookie_value',
+    'Origin' = 'https://oui.doleta.gov',
+    'Pragma' = 'no-cache',
+    'Referer' = 'https://oui.doleta.gov/unemploy/ranking.asp',
+    'Sec-Fetch-Dest' = 'document',
+    'Sec-Fetch-Mode' = 'navigate',
+    'Sec-Fetch-Site' = 'same-origin',
+    'Sec-Fetch-User' = '?1',
+    'Upgrade-Insecure-Requests' = '1',
+    'User-Agent' = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'sec-ch-ua' = '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    'sec-ch-ua-mobile' = '?0',
+    'sec-ch-ua-platform' = '"Linux"'
+  )
+  
+  start_end_quarter = c("07/01", "06/30")
+  years = 2018:2024
+  
+  quality_data_list = list()
+  quality_data_index = 1
+  for(year in years){
+      start_quarter = start_end_quarter[1]
+      message(year,"-",start_quarter)
+      end_quarter = start_end_quarter[2]
+      end_year = year + 1
+      res <- POST("https://oui.doleta.gov/unemploy/ranking/rankingrpt.asp",
+                  headers,
+                  body = list(
+                    "category[]" = 4, # Nonmonetary Separation Quality
+                    "category[]" = 5, # Nonmonetary Nonseparation Quality
+                    "strtqtr" = start_quarter, 
+                    "strtyear" = year, 
+                    "endqtr" = end_quarter,
+                    "endyear" = end_year,
+                    "submit" = "Submit"
+                  ),
+                  encode = "form"
+      )
+      res_text = content(res, as="text")
+      res_html = read_html(res_text)
+      html_tables = html_table(res_html)
+      sep_quality_table = html_tables[[1]]
+      names(sep_quality_table) = c("state", "nonmonetary_separation_quality_percent")
+      sep_quality_table = sep_quality_table[2:nrow(sep_quality_table),]
+      nonsep_quality_table = html_tables[[2]]
+      names(nonsep_quality_table) = c("state", "nonmonetary_nonseparation_quality_percent")
+      nonsep_quality_table = nonsep_quality_table[2:nrow(nonsep_quality_table),]
+      quality_dat = merge(sep_quality_table, nonsep_quality_table, all=T)
+      quality_dat$year = year
+      quality_dat$end_year = end_year
+      quality_dat$start_quarter = start_quarter
+      quality_dat$end_quarter = end_quarter
+      quality_data_list[[quality_data_index]] = quality_dat
+      quality_data_index = quality_data_index + 1
+      Sys.sleep(5)
+  }
+  all_quality_dat = rbindlist(quality_data_list)
+  
+  # Clean up data flags
+  all_quality_dat$nonmonetary_separation_quality_percent = as.numeric(
+    gsub(
+      "*",
+      "",
+      gsub("^","",all_quality_dat$nonmonetary_separation_quality_percent, fixed=T),
+      fixed=T
+    )
+  )
+  all_quality_dat$nonmonetary_nonseparation_quality_percent = as.numeric(
+    gsub(
+      "*",
+      "",
+      gsub("^","",all_quality_dat$nonmonetary_nonseparation_quality_percent, fixed=T),
+      fixed=T
+    )
+  )
+  
+  # Clean up dates
+  all_quality_dat$start_date = as.Date(
+    paste(all_quality_dat$start_quarter, all_quality_dat$year, sep="/"), format="%m/%d/%Y"
+  )
+  all_quality_dat$end_date = as.Date(
+    paste(all_quality_dat$end_quarter, all_quality_dat$end_year, sep="/"), format="%m/%d/%Y"
+  )
+  
+  all_quality_dat$md_fy_num = maryland_fy(all_quality_dat$end_date, numeric=T)
+  all_quality_dat$md_fy_str = maryland_fy(all_quality_dat$end_date, numeric=F)
+  all_quality_dat[,c("start_quarter", "end_quarter", "year")] = NULL
+  
+  # Write
+  fwrite(
+    all_quality_dat,
+    "input/quality_annual_fy.csv"
   )
 }
 

@@ -17,4 +17,5 @@ Please focus on the most recent 5 years of data. You may leverage additional dat
 
 ```
 Rscript code/01_download_source_data.R
+Rscript code/02_analysis_and_charts.R
 ```

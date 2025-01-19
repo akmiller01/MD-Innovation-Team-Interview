@@ -259,6 +259,8 @@ ggsave("output/md_rate_insured_unemployment.png", width=10, height=5)
 
 # Define/calculate peers
 us_states = fread("input/us_states.csv")
+setnames(us_states, c("State", "Abbreviation"), c("state_name", "state"))
+
 regional_peers = c(
   "PA", # Pennsylvania
   "DE", # Delaware
@@ -270,21 +272,379 @@ regional_peers = c(
 gni = fread("input/gni_2023_bea_gov.csv")
 md_gni = subset(gni, state=="MD")$gni_per_capita_2023
 gni$md_diff = abs(gni$gni_per_capita_2023 - md_gni)
-gni = subset(gni, state!="MD")
 gni = gni[order(gni$md_diff)]
-economic_peers = gni$state[1:5]
+economic_peers = gni$state[2:6]
 # "VA" Virginia
 # "MN" Minnesota
 # "SD" South Dakota
 # "IL" Illinois
 # "ND" North Dakota
+gni_out = gni[1:6,c("state_name","gni_per_capita_2023", "md_diff")]
+names(gni_out) = c(
+  "State",
+  "GNI per capita (2023)",
+  "Absolute difference from Maryland"
+)
+fwrite(gni_out, "output/gni_peers.csv")
 
 industry = fread("input/state_industry_employment.csv")
-industry = subset(industry, state!="MD")
 industry = industry[order(-industry$maryland_similarity)]
-industry_peers = industry$state[1:5]
+industry_peers = industry$state[2:6]
 # "VA" Virginia
 # "NM" New Mexico
 # "WA" Washington
 # "CA" California
 # "CO" Colorado
+industry_out = industry[1:6,c(
+  "state_name", 
+  "Mining, logging, and construction",
+  "Manufacturing",
+  "Financial activities",
+  "Government",
+  "maryland_similarity"
+)]
+fwrite(industry_out, "output/industry_peers.csv")
+
+
+# First payment promptness >=87%
+ar9050 = fread("input/ar9050.csv")
+ar9050 = subset(ar9050, indicator_type %in% c("intra-total", "inter-total"))
+ar9050_totals = ar9050[,.(
+  `14days_or_fewer`=sum(`14days_or_fewer`),
+  `21days_or_fewer`=sum(`21days_or_fewer`),
+  total=sum(total)
+  ),by=.(
+    state,
+    non_waiting_week,
+    report_for_period_ending,
+    md_fy_num,
+    md_fy_str
+  )]
+ar9050_totals = subset(ar9050_totals, year(report_for_period_ending) >= 2020)
+ar9050_totals$numerator = ar9050_totals$`21days_or_fewer`
+ar9050_totals$numerator[which(ar9050_totals$non_waiting_week)] =
+  ar9050_totals$`14days_or_fewer`[which(ar9050_totals$non_waiting_week)]
+ar9050_totals$first_payment_promptness = ar9050_totals$numerator / ar9050_totals$total
+ar9050_totals = merge(ar9050_totals, us_states, by="state")
+
+ar9050_totals_agg = ar9050[,.(
+  `14days_or_fewer`=sum(`14days_or_fewer`),
+  `21days_or_fewer`=sum(`21days_or_fewer`),
+  total=sum(total)
+),by=.(
+  state,
+  non_waiting_week,
+  md_fy_num,
+  md_fy_str
+)]
+ar9050_totals_agg = subset(ar9050_totals_agg, !md_fy_str %in% c("2018-2019", "2024-2025"))
+ar9050_totals_agg$numerator = ar9050_totals_agg$`21days_or_fewer`
+ar9050_totals_agg$numerator[which(ar9050_totals_agg$non_waiting_week)] =
+  ar9050_totals_agg$`14days_or_fewer`[which(ar9050_totals_agg$non_waiting_week)]
+ar9050_totals_agg$first_payment_promptness = ar9050_totals_agg$numerator / ar9050_totals_agg$total
+ar9050_totals_agg = merge(ar9050_totals_agg, us_states, by="state")
+ar9050_totals_agg = ar9050_totals_agg[,c("state_name", "state", "md_fy_str", "non_waiting_week", "first_payment_promptness")]
+ar9050_totals_agg_wide = dcast(
+  ar9050_totals_agg,
+  state_name+state+non_waiting_week~md_fy_str,
+  value.var = "first_payment_promptness"
+)
+# Note: These don't match with premade FPP indicators
+# But MD didn't become non-waiting until March 2020, so maybe
+# The premade ones haven't switched to 14 days yet
+ar9050_totals_agg_wide_regional = subset(ar9050_totals_agg_wide, state %in% c("MD",regional_peers))
+fwrite(ar9050_totals_agg_wide_regional,"output/fpp_regional.csv")
+
+ar9050_totals_agg_wide_econ = subset(ar9050_totals_agg_wide, state %in% c("MD", economic_peers))
+fwrite(ar9050_totals_agg_wide_econ,"output/fpp_econ.csv")
+
+ar9050_totals_agg_wide_industry = subset(ar9050_totals_agg_wide, state %in% c("MD", industry_peers))
+fwrite(ar9050_totals_agg_wide_industry,"output/fpp_industry.csv")
+
+ar9050_totals_regional = subset(ar9050_totals, state %in% c("MD",regional_peers))
+ggplot(ar9050_totals_regional, aes(x=report_for_period_ending, y=first_payment_promptness)) +
+  geom_line(color=blues[1]) +
+  geom_hline(yintercept = 0.87, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(ar9050_totals_regional$first_payment_promptness*1.1))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="First Payment Promptness",
+    x="",
+    color=""
+  )
+ggsave("output/fpp_regional.png", width=10, height=5)
+
+ar9050_totals_econ = subset(ar9050_totals, state %in% c("MD",economic_peers))
+ggplot(ar9050_totals_econ, aes(x=report_for_period_ending, y=first_payment_promptness)) +
+  geom_line(color=blues[1]) +
+  geom_hline(yintercept = 0.87, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(ar9050_totals_econ$first_payment_promptness*1.1))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="First Payment Promptness",
+    x="",
+    color=""
+  )
+ggsave("output/fpp_econ.png", width=10, height=5)
+
+ar9050_totals_industry = subset(ar9050_totals, state %in% c("MD",industry_peers))
+ggplot(ar9050_totals_industry, aes(x=report_for_period_ending, y=first_payment_promptness)) +
+  geom_line(color=blues[1]) +
+  geom_hline(yintercept = 0.87, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(ar9050_totals_industry$first_payment_promptness*1.1))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="First Payment Promptness",
+    x="",
+    color=""
+  )
+ggsave("output/fpp_industry.png", width=10, height=5)
+
+# Nonmonetary Determination Time Lapse >= 80%
+ar9052 = fread("input/ar9052.csv")
+ar9052 = subset(ar9052, indicator_type %in% c("intra-total", "inter-total"))
+ar9052_totals = ar9052[,.(
+  `21days_or_fewer`=sum(`21days_or_fewer`),
+  total=sum(total)
+),by=.(
+  state,
+  report_for_period_ending,
+  md_fy_num,
+  md_fy_str
+)]
+ar9052_totals = subset(ar9052_totals, year(report_for_period_ending) >= 2020)
+ar9052_totals$ndtl = ar9052_totals$`21days_or_fewer` / ar9052_totals$total
+ar9052_totals = merge(ar9052_totals, us_states, by="state")
+
+ar9052_totals_agg = ar9052[,.(
+  `21days_or_fewer`=sum(`21days_or_fewer`),
+  total=sum(total)
+),by=.(
+  state,
+  md_fy_num,
+  md_fy_str
+)]
+ar9052_totals_agg = subset(ar9052_totals_agg, !md_fy_str %in% c("2018-2019", "2024-2025"))
+ar9052_totals_agg$ndtl = ar9052_totals_agg$`21days_or_fewer` / ar9052_totals_agg$total
+ar9052_totals_agg = merge(ar9052_totals_agg, us_states, by="state")
+ar9052_totals_agg = ar9052_totals_agg[,c("state_name", "state", "md_fy_str", "ndtl")]
+ar9052_totals_agg_wide = dcast(
+  ar9052_totals_agg,
+  state_name+state~md_fy_str,
+  value.var = "ndtl"
+)
+
+ar9052_totals_agg_wide_regional = subset(ar9052_totals_agg_wide, state %in% c("MD",regional_peers))
+fwrite(ar9052_totals_agg_wide_regional,"output/ndtl_regional.csv")
+
+ar9052_totals_agg_wide_econ = subset(ar9052_totals_agg_wide, state %in% c("MD", economic_peers))
+fwrite(ar9052_totals_agg_wide_econ,"output/ndtl_econ.csv")
+
+ar9052_totals_agg_wide_industry = subset(ar9052_totals_agg_wide, state %in% c("MD", industry_peers))
+fwrite(ar9052_totals_agg_wide_industry,"output/ndtl_industry.csv")
+
+ar9052_totals_regional = subset(ar9052_totals, state %in% c("MD",regional_peers))
+ggplot(ar9052_totals_regional, aes(x=report_for_period_ending, y=ndtl)) +
+  geom_line(color=blues[1]) +
+  geom_hline(yintercept = 0.80, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(ar9052_totals_regional$ndtl*1.1))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Nonmonetary Determination Time Lapse",
+    x="",
+    color=""
+  )
+ggsave("output/ndtl_regional.png", width=10, height=5)
+
+ar9052_totals_econ = subset(ar9052_totals, state %in% c("MD",economic_peers))
+ggplot(ar9052_totals_econ, aes(x=report_for_period_ending, y=ndtl)) +
+  geom_line(color=blues[1]) +
+  geom_hline(yintercept = 0.80, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(ar9052_totals_econ$ndtl*1.1))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Nonmonetary Determination Time Lapse",
+    x="",
+    color=""
+  )
+ggsave("output/ndtl_econ.png", width=10, height=5)
+
+ar9052_totals_industry = subset(ar9052_totals, state %in% c("MD",industry_peers))
+ggplot(ar9052_totals_industry, aes(x=report_for_period_ending, y=ndtl)) +
+  geom_line(color=blues[1]) +
+  geom_hline(yintercept = 0.80, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(ar9052_totals_industry$ndtl*1.1))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Nonmonetary Determination Time Lapse",
+    x="",
+    color=""
+  )
+ggsave("output/ndtl_industry.png", width=10, height=5)
+
+# Nonmonetary Determination Quality - Sep and Nonsep
+quality = fread("input/quality.csv")
+quality = subset(quality, year(start_date) >= 2020)
+quality = merge(quality, us_states, by="state")
+quality$nonmonetary_nonseparation_quality_percent =
+  quality$nonmonetary_nonseparation_quality_percent / 100
+quality$nonmonetary_separation_quality_percent = 
+  quality$nonmonetary_separation_quality_percent / 100
+
+quality_annual = fread("input/quality_annual_fy.csv")
+quality_annual = subset(quality_annual, !md_fy_str %in% c("2018-2019", "2024-2025"))
+quality_annual = merge(quality_annual, us_states, by="state")
+quality_annual_nonsep = quality_annual[,c("state_name", "state", "md_fy_str", "nonmonetary_nonseparation_quality_percent")]
+quality_annual_nonsep$nonmonetary_nonseparation_quality_percent = quality_annual_nonsep$nonmonetary_nonseparation_quality_percent / 100
+quality_annual_sep = quality_annual[,c("state_name", "state", "md_fy_str", "nonmonetary_separation_quality_percent")]
+quality_annual_sep$nonmonetary_separation_quality_percent = quality_annual_sep$nonmonetary_separation_quality_percent / 100
+
+quality_annual_nonsep_wide = dcast(
+  quality_annual_nonsep,
+  state_name+state~md_fy_str,
+  value.var = "nonmonetary_nonseparation_quality_percent"
+)
+quality_annual_sep_wide = dcast(
+  quality_annual_sep,
+  state_name+state~md_fy_str,
+  value.var = "nonmonetary_separation_quality_percent"
+)
+
+quality_annual_sep_wide_regional = subset(quality_annual_sep_wide, state %in% c("MD",regional_peers))
+fwrite(quality_annual_sep_wide_regional,"output/quality_sep_regional.csv")
+quality_annual_nonsep_wide_regional = subset(quality_annual_nonsep_wide, state %in% c("MD",regional_peers))
+fwrite(quality_annual_nonsep_wide_regional,"output/quality_nonsep_regional.csv")
+
+quality_annual_sep_wide_econ = subset(quality_annual_sep_wide, state %in% c("MD", economic_peers))
+fwrite(quality_annual_sep_wide_econ,"output/quality_sep_econ.csv")
+quality_annual_nonsep_wide_econ = subset(quality_annual_nonsep_wide, state %in% c("MD", economic_peers))
+fwrite(quality_annual_nonsep_wide_econ,"output/quality_nonsep_econ.csv")
+
+quality_annual_sep_wide_industry = subset(quality_annual_sep_wide, state %in% c("MD", industry_peers))
+fwrite(quality_annual_sep_wide_industry,"output/quality_sep_industry.csv")
+quality_annual_nonsep_wide_industry = subset(quality_annual_nonsep_wide, state %in% c("MD", industry_peers))
+fwrite(quality_annual_nonsep_wide_industry,"output/quality_nonsep_industry.csv")
+
+quality_regional = subset(quality, state %in% c("MD",regional_peers))
+ggplot(quality_regional, aes(x=end_date, y=nonmonetary_separation_quality_percent)) +
+  geom_bar(stat="identity", fill=blues[1]) +
+  geom_hline(yintercept = 0.75, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(quality_regional$nonmonetary_separation_quality_percent*1.1, na.rm=T))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Nonmonetary Determination Quality - Separations",
+    x="",
+    color=""
+  )
+ggsave("output/ndqs_regional.png", width=10, height=5)
+ggplot(quality_regional, aes(x=end_date, y=nonmonetary_nonseparation_quality_percent)) +
+  geom_bar(stat="identity", fill=blues[1]) +
+  geom_hline(yintercept = 0.75, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(quality_regional$nonmonetary_nonseparation_quality_percent*1.1, na.rm=T))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Nonmonetary Determination Quality - Nonseparations",
+    x="",
+    color=""
+  )
+ggsave("output/ndqn_regional.png", width=10, height=5)
+
+quality_econ = subset(quality, state %in% c("MD",economic_peers))
+ggplot(quality_econ, aes(x=end_date, y=nonmonetary_separation_quality_percent)) +
+  geom_bar(stat="identity", fill=blues[1]) +
+  geom_hline(yintercept = 0.75, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(quality_econ$nonmonetary_separation_quality_percent*1.1, na.rm=T))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Nonmonetary Determination Quality - Separations",
+    x="",
+    color=""
+  )
+ggsave("output/ndqs_econ.png", width=10, height=5)
+ggplot(quality_econ, aes(x=end_date, y=nonmonetary_nonseparation_quality_percent)) +
+  geom_bar(stat="identity", fill=blues[1]) +
+  geom_hline(yintercept = 0.75, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(quality_econ$nonmonetary_nonseparation_quality_percent*1.1, na.rm=T))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Nonmonetary Determination Quality - Nonseparations",
+    x="",
+    color=""
+  )
+ggsave("output/ndqn_econ.png", width=10, height=5)
+
+quality_industry = subset(quality, state %in% c("MD",industry_peers))
+ggplot(quality_industry, aes(x=end_date, y=nonmonetary_separation_quality_percent)) +
+  geom_bar(stat="identity", fill=blues[1]) +
+  geom_hline(yintercept = 0.75, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(quality_industry$nonmonetary_separation_quality_percent*1.1, na.rm=T))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Nonmonetary Determination Quality - Separations",
+    x="",
+    color=""
+  )
+ggsave("output/ndqs_industry.png", width=10, height=5)
+ggplot(quality_industry, aes(x=end_date, y=nonmonetary_nonseparation_quality_percent, na.rm=T)) +
+  geom_bar(stat="identity", fill=blues[1]) +
+  geom_hline(yintercept = 0.75, color=reds[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(quality_industry$nonmonetary_nonseparation_quality_percent*1.1, na.rm=T))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Nonmonetary Determination Quality - Nonseparations",
+    x="",
+    color=""
+  )
+ggsave("output/ndqn_industry.png", width=10, height=5)
+
+# Insights related to claimant demographics or characteristics, ####
+# including claimant industry or sector, that may help the Innovation Team 
+# and MDL develop tailored initiatives in the future.
