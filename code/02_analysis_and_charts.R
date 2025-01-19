@@ -96,7 +96,7 @@ ar539_md_ic_long = melt(ar539_md_ic, id.vars=c("reflected_week_ending"))
 
 # Plot
 ggplot(subset(ar539_md_ic_long, variable=="State UI"), aes(x=reflected_week_ending, y=value, group=variable, fill=variable)) +
-  geom_area() +
+  geom_area(alpha=0.9) +
   scale_fill_manual(values=c(reds[1])) +
   scale_y_continuous(expand = c(0, 0), labels=label_comma()) +
   expand_limits(y=c(0, max(subset(ar539_md_ic_long, variable=="State UI")$value*1.1))) +
@@ -110,7 +110,7 @@ ggplot(subset(ar539_md_ic_long, variable=="State UI"), aes(x=reflected_week_endi
   )
 ggsave("output/md_state_ic.png", width=10, height=5)
 ggplot(subset(ar539_md_ic_long, variable=="State UI" & year(reflected_week_ending) >= 2022), aes(x=reflected_week_ending, y=value, group=variable, fill=variable)) +
-  geom_area() +
+  geom_area(alpha=0.9) +
   scale_fill_manual(values=c(reds[1])) +
   scale_y_continuous(expand = c(0, 0), labels=label_comma()) +
   expand_limits(y=c(0, max(subset(ar539_md_ic_long, variable=="State UI" & year(reflected_week_ending) >= 2022)$value*1.1))) +
@@ -124,7 +124,7 @@ ggplot(subset(ar539_md_ic_long, variable=="State UI" & year(reflected_week_endin
   )
 ggsave("output/md_state_ic_zoom.png", width=10, height=5)
 ggplot(subset(ar539_md_ic_long, variable!="State UI"), aes(x=reflected_week_ending, y=value, group=variable, fill=variable)) +
-  geom_area() +
+  geom_area(alpha=0.9) +
   scale_fill_manual(values=c(purples[1], oranges[1], yellows[1])) +
   scale_y_continuous(expand = c(0, 0)) +
   expand_limits(y=c(0, max(subset(ar539_md_ic_long, variable!="State UI")$value*1.1))) +
@@ -181,7 +181,7 @@ ar539_md_cw_long = melt(ar539_md_cw, id.vars=c("reflected_week_ending"))
 
 # Plot
 ggplot(subset(ar539_md_cw_long, variable=="State UI"), aes(x=reflected_week_ending, y=value, group=variable, fill=variable)) +
-  geom_area() +
+  geom_area(alpha=0.9) +
   scale_fill_manual(values=c(reds[1])) +
   scale_y_continuous(expand = c(0, 0), labels=label_comma()) +
   expand_limits(y=c(0, max(subset(ar539_md_ic_long, variable=="State UI")$value*1.1))) +
@@ -195,7 +195,7 @@ ggplot(subset(ar539_md_cw_long, variable=="State UI"), aes(x=reflected_week_endi
   )
 ggsave("output/md_state_cw.png", width=10, height=5)
 ggplot(subset(ar539_md_cw_long, variable=="State UI" & year(reflected_week_ending) >= 2022), aes(x=reflected_week_ending, y=value, group=variable, fill=variable)) +
-  geom_area() +
+  geom_area(alpha=0.9) +
   scale_fill_manual(values=c(reds[1])) +
   scale_y_continuous(expand = c(0, 0), labels=label_comma()) +
   expand_limits(y=c(0, max(subset(ar539_md_ic_long, variable=="State UI" & year(reflected_week_ending) >= 2022)$value*1.1))) +
@@ -209,7 +209,7 @@ ggplot(subset(ar539_md_cw_long, variable=="State UI" & year(reflected_week_endin
   )
 ggsave("output/md_state_cw_zoom.png", width=10, height=5)
 ggplot(subset(ar539_md_cw_long, variable!="State UI"), aes(x=reflected_week_ending, y=value, group=variable, fill=variable)) +
-  geom_area() +
+  geom_area(alpha=0.9) +
   scale_fill_manual(values=c(purples[1], oranges[1], yellows[1], pinks[1])) +
   scale_y_continuous(expand = c(0, 0)) +
   expand_limits(y=c(0, max(subset(ar539_md_ic_long, variable!="State UI")$value*1.1))) +
@@ -645,6 +645,227 @@ ggplot(quality_industry, aes(x=end_date, y=nonmonetary_nonseparation_quality_per
   )
 ggsave("output/ndqn_industry.png", width=10, height=5)
 
+# Reemployment rate
+ar9047 = fread("input/ar9047.csv")
+
+ar9047_totals = subset(ar9047, year(report_for_period_ending) >= 2020)
+ar9047_totals = merge(ar9047_totals, us_states, by="state")
+
+ar9047_totals_agg = ar9047[,.(
+  non_exempt_intrastate_matches=sum(non_exempt_intrastate_matches),
+  non_exempt_interstate_matches=sum(non_exempt_interstate_matches),
+  non_exempt_1st_payment=sum(non_exempt_1st_payment)
+),by=.(
+  state,
+  md_fy_num,
+  md_fy_str
+)]
+ar9047_totals_agg = subset(ar9047_totals_agg, !md_fy_str %in% c("2018-2019", "2024-2025"))
+ar9047_totals_agg$reemployment_rate = 
+  (ar9047_totals_agg$non_exempt_intrastate_matches + ar9047_totals_agg$non_exempt_interstate_matches) /
+  ar9047_totals_agg$non_exempt_1st_payment
+ar9047_totals_agg = merge(ar9047_totals_agg, us_states, by="state")
+ar9047_totals_agg = ar9047_totals_agg[,c("state_name", "state", "md_fy_str", "reemployment_rate")]
+ar9047_totals_agg_wide = dcast(
+  ar9047_totals_agg,
+  state_name+state~md_fy_str,
+  value.var = "reemployment_rate"
+)
+
+ar9047_totals_agg_wide_regional = subset(ar9047_totals_agg_wide, state %in% c("MD",regional_peers))
+fwrite(ar9047_totals_agg_wide_regional,"output/reemployment_rate_regional.csv")
+
+ar9047_totals_agg_wide_econ = subset(ar9047_totals_agg_wide, state %in% c("MD", economic_peers))
+fwrite(ar9047_totals_agg_wide_econ,"output/reemployment_rate_econ.csv")
+
+ar9047_totals_agg_wide_industry = subset(ar9047_totals_agg_wide, state %in% c("MD", industry_peers))
+fwrite(ar9047_totals_agg_wide_industry,"output/reemployment_rate_industry.csv")
+
+ar9047_totals_regional = subset(ar9047_totals, state %in% c("MD",regional_peers))
+ggplot(ar9047_totals_regional, aes(x=report_for_period_ending, y=reemployment_rate)) +
+  geom_line(color=blues[1]) +
+  geom_point(color=blues[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(ar9047_totals_regional$reemployment_rate*1.1, na.rm=T))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_90 +
+  labs(
+    y="Reemployment Rate",
+    x="",
+    color=""
+  )
+ggsave("output/reemployment_rate_regional.png", width=10, height=5)
+
+ar9047_totals_econ = subset(ar9047_totals, state %in% c("MD",economic_peers))
+ggplot(ar9047_totals_econ, aes(x=report_for_period_ending, y=reemployment_rate)) +
+  geom_line(color=blues[1]) +
+  geom_point(color=blues[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(ar9047_totals_econ$reemployment_rate*1.1, na.rm=T))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_90 +
+  labs(
+    y="Reemployment Rate",
+    x="",
+    color=""
+  )
+ggsave("output/reemployment_rate_econ.png", width=10, height=5)
+
+ar9047_totals_industry = subset(ar9047_totals, state %in% c("MD",industry_peers))
+ggplot(ar9047_totals_industry, aes(x=report_for_period_ending, y=reemployment_rate)) +
+  geom_line(color=blues[1]) +
+  geom_point(color=blues[1]) +
+  facet_wrap(~state_name) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(ar9047_totals_industry$reemployment_rate*1.1, na.rm=T))) +
+  scale_x_date(date_breaks = "9 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Reemployment Rate",
+    x="",
+    color=""
+  )
+ggsave("output/reemployment_rate_industry.png", width=10, height=5)
+
 # Insights related to claimant demographics or characteristics, ####
 # including claimant industry or sector, that may help the Innovation Team 
 # and MDL develop tailored initiatives in the future.
+ar203 = fread("input/ar203.csv")
+ar203_md = subset(ar203, state=="MD")
+unique(ar203_md$sample_pop)
+ar203_md$sample_pop = NULL
+
+ar203_md_long = melt(
+  ar203_md, id.vars=c(
+    "state",
+    "report_for_period_ending",
+    "md_fy_num",
+    "md_fy_str"
+  )
+)
+ar203_md_long$variable = as.character(ar203_md_long$variable)
+ar203_md_long$variable_type = sapply(
+  sapply(
+    ar203_md_long$variable,
+    strsplit,
+    split="_"
+  ),
+  `[[`,
+  1
+)
+ar203_md_long = data.table(ar203_md_long)
+ar203_md_long[,"percent":=value/sum(value, na.rm=T), by=.(variable_type, report_for_period_ending)]
+
+ar203_md_long_agg = ar203_md_long[,.(
+  value=sum(value, na.rm=T)
+), by=.(state, md_fy_num, md_fy_str, variable, variable_type)]
+ar203_md_long_agg[,"percent":=value/sum(value, na.rm=T), by=.(variable_type, md_fy_num)]
+ar203_md_long_agg = subset(ar203_md_long_agg, !md_fy_str %in% c("2018-2019", "2024-2025"))
+ar203_md_long = subset(ar203_md_long, year(report_for_period_ending) >= 2020)
+
+ar203_md_wide_agg = ar203_md_long_agg[,c("md_fy_str", "variable", "variable_type", "percent")]
+ar203_md_wide_agg = dcast(
+  ar203_md_wide_agg,
+  variable+variable_type~md_fy_str,
+  value.var="percent"
+)
+ar203_md_wide_agg$five_yr_change =
+  ar203_md_wide_agg$`2023-2024` - ar203_md_wide_agg$`2019-2020`
+ar203_md_wide_agg = ar203_md_wide_agg[order(-ar203_md_wide_agg$five_yr_change),]
+for(tmp_variable_type in unique(ar203_md_wide_agg$variable_type)){
+  tmp = subset(ar203_md_wide_agg, variable_type==tmp_variable_type)
+  fwrite(tmp, paste0("output/demographic_",tmp_variable_type,".csv"))
+}
+
+
+ar203_md_long_sex = subset(ar203_md_long, variable_type=="sex")
+ggplot(ar203_md_long_sex, aes(x=report_for_period_ending, y=percent, group=variable, fill=variable)) +
+  geom_area(alpha=0.9)
+ar203_md_long_age = subset(ar203_md_long, variable_type=="age")
+ggplot(ar203_md_long_age, aes(x=report_for_period_ending, y=percent, group=variable, fill=variable)) +
+  geom_area(alpha=0.9)
+ar203_md_long_eth = subset(ar203_md_long, variable_type=="eth")
+ggplot(ar203_md_long_eth, aes(x=report_for_period_ending, y=percent, group=variable, fill=variable)) +
+  geom_area(alpha=0.9)
+ar203_md_long_occ = subset(ar203_md_long, variable_type=="occ")
+ggplot(ar203_md_long_occ, aes(x=report_for_period_ending, y=percent, group=variable, fill=variable)) +
+  geom_area(alpha=0.9)
+ar203_md_long_race = subset(ar203_md_long, variable_type=="race")
+race_labels = c(
+  "race_asian"="Asian",
+  "race_black_african_am"="Black or African American",
+  "race_white"="White",
+  "race_ina"="Not available"
+)
+ar203_md_long_race$label = race_labels[ar203_md_long_race$variable]
+ar203_md_long_race$label[which(is.na(ar203_md_long_race$label))] = "Other"
+ar203_md_long_race = ar203_md_long_race[,.(
+  percent=sum(percent)
+), by=.(report_for_period_ending, label)]
+ar203_md_long_race$label = factor(
+  ar203_md_long_race$label,
+  levels=c(
+    "Not available",
+    "Other",
+    "Asian",
+    "Black or African American",
+    "White"
+  )
+)
+ggplot(ar203_md_long_race, aes(x=report_for_period_ending, y=percent, group=label, fill=label)) +
+  geom_area(alpha=0.9) +
+  scale_fill_manual(values=c(greys[1], greys[2], reds[1], yellows[4], blues[1])) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, 1)) +
+  scale_x_date(date_breaks = "3 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Percent of insured unemployed",
+    x="",
+    fill=""
+  )
+ggsave("output/demographics_race.png", width=10, height=5)
+
+ar203_md_long_ind = subset(ar203_md_long, variable_type=="ind")
+ind_labels = c(
+  "ind_prof_sci_tech"="Professional/Scientific/Technical Services",
+  "ind_retail_trade"="Retail Trade",
+  "ind_accommodation_food"="Accommodation and Food Services",
+  "ind_ina"="Not available"
+)
+ar203_md_long_ind$label = ind_labels[ar203_md_long_ind$variable]
+ar203_md_long_ind$label[which(is.na(ar203_md_long_ind$label))] = "Other"
+ar203_md_long_ind = ar203_md_long_ind[,.(
+  percent=sum(percent)
+), by=.(report_for_period_ending, label)]
+ar203_md_long_ind$label = factor(
+  ar203_md_long_ind$label,
+  levels=c(
+    "Not available",
+    "Other",
+    "Professional/Scientific/Technical Services",
+    "Retail Trade",
+    "Accommodation and Food Services"
+  )
+)
+ggplot(ar203_md_long_ind, aes(x=report_for_period_ending, y=percent, group=label, fill=label)) +
+  geom_area(alpha=0.9) +
+  scale_fill_manual(values=c(greys[1], greys[2], reds[1], yellows[4], blues[1])) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, 1)) +
+  scale_x_date(date_breaks = "3 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Percent of insured unemployed",
+    x="",
+    fill=""
+  ) + 
+  guides(fill=guide_legend(nrow=2,byrow=TRUE))
+ggsave("output/demographics_ind.png", width=10, height=5)
