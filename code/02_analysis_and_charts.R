@@ -39,11 +39,12 @@ chart_style = theme_bw() +
     ,panel.grid.major.y = element_line(colour = greys[2])
     ,panel.grid.minor.y = element_blank()
     ,panel.background = element_blank()
-    ,plot.background = element_blank()
+    ,plot.background = element_rect(fill="#f3f0df")
     ,axis.line.x = element_line(colour = "black")
     ,axis.line.y = element_blank()
     ,axis.ticks = element_blank()
     ,legend.position = "bottom"
+    ,legend.background = element_rect(fill="#f3f0df")
   )
 
 donut_style = chart_style +
@@ -224,14 +225,15 @@ ggplot(subset(ar539_md_cw_long, variable!="State UI"), aes(x=reflected_week_endi
 ggsave("output/md_nonstate_cw.png", width=10, height=5)
 
 # Insured unemployment rate
-ar539_md$r = ar539_md$r / 100
-r_md_agg = ar539_md[,.(r=mean(r)),by=.(
+r_md_agg = ar539_md[,.(at=sum(at), ce=sum(ce)),by=.(
   md_fy_str
 )]
+r_md_agg$r = r_md_agg$at / r_md_agg$ce
 r_md_agg = subset(r_md_agg, !md_fy_str %in% c("2018-2019", "2024-2025"))
+r_md_agg[,c("at", "ce")] = NULL
 names(r_md_agg) = c(
   "Maryland Fiscal Year",
-  "Average insured unemployment rate"
+  "Insured unemployment rate"
 )
 fwrite(r_md_agg, "output/insured_unemployment_md_fy.csv")
 
