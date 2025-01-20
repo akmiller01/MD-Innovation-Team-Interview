@@ -831,6 +831,26 @@ ggplot(ar203_md_long_race, aes(x=report_for_period_ending, y=percent, group=labe
     fill=""
   )
 ggsave("output/demographics_race.png", width=10, height=5)
+md_census = fread("input/md_census.csv")
+md_census$label = md_census$race
+md_census$label[which(!md_census$race %in% race_labels)] = "Other"
+md_census = md_census[,.(percent=sum(percent)), by=.(year, label)]
+md_census_wide = dcast(md_census, label~year, value.var="percent")
+fwrite(md_census_wide, "output/md_census_for_comp.csv")
+ggplot(md_census, aes(x=year, y=percent, group=label, fill=label)) +
+  geom_area(alpha=0.9) +
+  scale_fill_manual(values=c(reds[1], yellows[4], greys[2], blues[1])) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(md_census$percent * 1.1))) +
+  scale_x_continuous() +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Percent of population",
+    x="",
+    fill=""
+  )
+ggsave("output/md_census_for_comp.png", width=10, height=5)
 
 ar203_md_long_ind = subset(ar203_md_long, variable_type=="ind")
 ind_labels = c(
@@ -869,3 +889,41 @@ ggplot(ar203_md_long_ind, aes(x=report_for_period_ending, y=percent, group=label
   ) + 
   guides(fill=guide_legend(nrow=2,byrow=TRUE))
 ggsave("output/demographics_ind.png", width=10, height=5)
+
+md_industry = fread("input/md_industry_employment.csv")
+md_industry = subset(md_industry,
+                     industry %in% c(
+                       "professional & business", # "Professional/Scientific/Technical Services",
+                       "information", 
+                       "trade, transportation, utilities, & Warehousing", # "Retail Trade",
+                       "leisure & hospitality" # "Accommodation and Food Services"
+                     ))
+md_industry_wide = dcast(
+  md_industry,
+  industry~year,
+  value.var="percent"
+)
+fwrite(md_industry_wide, "output/md_industry_for_comp.csv")
+
+industry_labels = c(
+  "professional & business" = "Professional & business",
+  "information" = "Information", 
+  "trade, transportation, utilities, & Warehousing" = "Trade, transportation,\nutilities, & warehousing",
+  "leisure & hospitality"="Leisure and hospitality"
+)
+md_industry$label = industry_labels[md_industry$industry]
+ggplot(md_industry, aes(x=year, y=percent, group=label, fill=label)) +
+  geom_area(alpha=0.9) +
+  scale_fill_manual(values=c(reds[1], blues[1], reds[5], yellows[4])) +
+  scale_y_continuous(expand = c(0, 0), labels=percent) +
+  expand_limits(y=c(0, max(md_industry$percent * 1.1))) +
+  scale_x_continuous() +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Percent of workforce",
+    x="",
+    fill=""
+  ) + 
+  guides(fill=guide_legend(nrow=2,byrow=TRUE))
+ggsave("output/md_industry_for_comp.png", width=10, height=5)

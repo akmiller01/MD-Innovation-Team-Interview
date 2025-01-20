@@ -1,5 +1,5 @@
 # Requirements and setwd
-list.of.packages <- c("data.table", "Hmisc", "reshape2", "splitstackshape", "httr", "rvest", "lsa")
+list.of.packages <- c("data.table", "Hmisc", "reshape2", "splitstackshape", "httr", "rvest", "lsa", "openxlsx")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
 lapply(list.of.packages, require, character.only=T)
@@ -739,4 +739,84 @@ if(!file.exists("input/state_industry_employment.csv")){
     industry_employment_wide,
     "input/state_industry_employment.csv"
   )
+}
+
+# Maryland industry specifically ####
+# Load saved HTML from https://msa.maryland.gov/msa/mdmanual/01glance/economy/html/labor.html
+# Source: Division of Workforce Development & Adult Learning, Department of Labor, Licensing, & Regulation
+if(!file.exists("input/md_industry_employment.csv")){
+  md_industry_html = read_html("input/Maryland Employment - Workforce.html")
+  md_industry_tables = html_table(md_industry_html)
+  
+  # Combine tables on different rows for total employment
+  total_employment = md_industry_tables[[1]][2,1:4]
+  names(total_employment) = c("state_name", "2021", "2022", "2023")
+  for(i in 2:6){
+    new_employment_row = md_industry_tables[[i]][,2:6]
+    names(new_employment_row) = new_employment_row[1,]
+    new_employment_row = new_employment_row[2,]
+    total_employment = cbind(total_employment, new_employment_row)
+  }
+  total_employment$`NA` = NULL
+  
+  # Reshape and clean
+  total_employment_long = melt(
+    total_employment, 
+    id.vars="state_name",
+    variable.name="year",
+    value.name="total_employment"
+  )
+  total_employment_long$total_employment = as.numeric(
+    gsub(",","",total_employment_long$total_employment)
+  )
+  
+  # Combine for industries
+  industry_employment = md_industry_tables[[7]][,1:4]
+  industry_employment = industry_employment[2:nrow(industry_employment),]
+  names(industry_employment) = c("industry", "2021", "2022", "2023")
+  for(i in 8:11){
+    new_industry_row = md_industry_tables[[i]][,2:6]
+    names(new_industry_row) = new_industry_row[1,]
+    new_industry_row = new_industry_row[2:nrow(new_industry_row),]
+    industry_employment = cbind(industry_employment, new_industry_row)
+  }
+  
+  # Reshape and clean
+  industry_employment_long = melt(
+    industry_employment, 
+    id.vars="industry",
+    variable.name="year",
+    value.name="employment"
+  )
+  industry_employment_long$employment = as.numeric(
+    gsub(",","",industry_employment_long$employment)
+  )
+  industry_employment_long = subset(industry_employment_long, !is.na(employment))
+  
+  # Subset & Merge total employment
+  industry_employment_long = merge(
+    industry_employment_long,
+    total_employment_long,
+    by="year"
+  )
+  industry_employment_long$year = as.numeric(as.character(industry_employment_long$year))
+  industry_employment_long = subset(
+    industry_employment_long, year >= 2019
+  )
+  industry_employment_long$percent = 
+    industry_employment_long$employment / 
+    industry_employment_long$total_employment
+  fwrite(industry_employment_long, "input/md_industry_employment.csv")
+}
+
+
+# MD Census Demographics ####
+# Source https://www.census.gov/data/datasets/time-series/demo/popest/2020s-state-detail.html#v2024
+if(!file.exists("input/md_census.csv")){
+  md_census = fread("input/sc-est2023-sr11h-24.csv", header=T)
+  md_census_long = melt(md_census, id.vars=c("Race"), variable.name="Year")
+  md_census_long = data.table(md_census_long)
+  md_census_long[,"percent":=value/sum(value), by=.(Year)]
+  names(md_census_long) = c("race","year","value","percent")
+  fwrite(md_census_long, "input/md_census.csv")
 }
