@@ -240,6 +240,7 @@ fwrite(r_md_agg, "output/insured_unemployment_md_fy.csv")
 # Subset
 ar539_md_r = ar539_md[,c("reflected_week_ending", "r")]
 ar539_md_r = subset(ar539_md_r, year(reflected_week_ending) >= 2020)
+ar539_md_r$r = ar539_md_r$r / 100
 
 # Plot
 ggplot(ar539_md_r, aes(x=reflected_week_ending, y=r)) +
