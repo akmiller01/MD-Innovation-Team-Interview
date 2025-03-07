@@ -4,7 +4,7 @@ new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"
 if(length(new.packages)) install.packages(new.packages)
 lapply(list.of.packages, require, character.only=T)
 
-setwd("/home/alex/git/MD-Innovation-Team-Interview/")
+setwd("/git/MD-Innovation-Team-Interview/")
 
 # Function for Calculating Maryland FY
 maryland_fy = function(date_col, numeric=F){

@@ -3,7 +3,7 @@ list.of.packages <- c("data.table","ggplot2","scales","reshape2", "xts", "lubrid
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
 lapply(list.of.packages, require, character.only=T)
-setwd("/home/alex/git/MD-Innovation-Team-Interview/")
+setwd("/git/MD-Innovation-Team-Interview/")
 
 # Chart styles ####
 reds = c(
@@ -139,6 +139,19 @@ ggplot(subset(ar539_md_ic_long, variable!="State UI"), aes(x=reflected_week_endi
   )
 ggsave("output/md_nonstate_ic.png", width=10, height=5)
 
+# UCFE initial claims
+ggplot(subset(ar539_md_ic_long, variable=="UCFE" & year(reflected_week_ending) >= 2024), aes(x=reflected_week_ending, y=value)) +
+  geom_bar(stat="identity", fill=reds[1]) +
+  scale_y_continuous(expand = c(0, 0), n.break=6) +
+  expand_limits(y=c(0, max(subset(ar539_md_ic_long, variable=="UCFE")$value*1.1))) +
+  scale_x_date(date_breaks = "3 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Maryland-based federal\nemployee initial UI claims",
+    x=""
+  )
+
 # Quick LOESS decomp
 ic_for_ts = subset(ar539_md_ic_long, variable=="State UI")
 ic_ts = ts(data = as.vector(ic_for_ts$value),
@@ -223,6 +236,18 @@ ggplot(subset(ar539_md_cw_long, variable!="State UI"), aes(x=reflected_week_endi
     fill="Program"
   )
 ggsave("output/md_nonstate_cw.png", width=10, height=5)
+
+ggplot(subset(ar539_md_cw_long, variable=="UCFE" & year(reflected_week_ending) >= 2024), aes(x=reflected_week_ending, y=value)) +
+  geom_bar(stat="identity", fill=reds[1]) +
+  scale_y_continuous(expand = c(0, 0), n.breaks=6) +
+  expand_limits(y=c(0, max(subset(ar539_md_ic_long, variable=="UCFE")$value*1.1))) +
+  scale_x_date(date_breaks = "3 months") +
+  chart_style +
+  rotate_x_text_45 +
+  labs(
+    y="Maryland-based federal\nemployee UI continued weeks",
+    x=""
+  )
 
 # Insured unemployment rate
 r_md_agg = ar539_md[,.(at=sum(at), ce=sum(ce)),by=.(
